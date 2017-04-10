@@ -1,0 +1,12 @@
+[package]
+name = "stunnel"
+version = "0.1.0"
+authors = ["Benjamin Cheng <ben@bcheng.cf>"]
+
+[dependencies]
+bytes = "0.4"
+futures = "0.1"
+native-tls = "0.1"
+tokio-core = "0.1"
+tokio-io = "0.1"
+tokio-tls = "0.1"
