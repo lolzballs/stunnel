@@ -1,9 +1,22 @@
 extern crate bytes;
+#[macro_use]
+extern crate error_chain;
 extern crate futures;
 extern crate native_tls;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate tokio_tls;
+extern crate toml;
+
+mod errors;
+mod config;
+mod tunnel;
+
+use config::Config;
+use errors::*;
 
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, ToSocketAddrs};
@@ -18,13 +31,17 @@ use tokio_io::io::{copy, shutdown};
 use tokio_tls::TlsConnectorExt;
 
 fn main() {
+    let config = Config::from_file("stunnel.toml").unwrap();
+    println!("{:#?}", config);
     let mut core = Core::new().expect("could not create reactor core");
     let handle = core.handle();
 
-    let listen_addr = "127.0.0.1:1194".parse().unwrap();
+    let listen_addr = config.listen.parse().unwrap();
     let listener = TcpListener::bind(&listen_addr, &handle).unwrap();
+    println!("Listening on: {}", listen_addr);
 
-    let remote_addr = "ayy.bcheng.cf:443"
+    let remote_addr = config
+        .remote
         .to_socket_addrs()
         .unwrap()
         .next()
@@ -35,79 +52,16 @@ fn main() {
         .for_each(|(local_sock, _)| {
             let local_addr = local_sock.peer_addr().unwrap();
             println!("recieved connection from {}", local_addr);
-            let local_read = TunnelStream(Arc::new(local_sock));
-            let local_write = local_read.clone();
-
-            let cx = TlsConnector::builder().unwrap().build().unwrap();
             let remote_sock = TcpStream::connect(&remote_addr, &handle);
 
-            let tls_handshake = {
-                let local_addr = local_addr.clone();
-                remote_sock.and_then(move |socket| {
-                                         let tls = cx.connect_async("ayy.bcheng.cf", socket);
-                                         tls.map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-                                     })
+            let sni_addr = match config.sni_addr {
+                Some(ref s) => s.clone(),
+                None => config.remote.split(':').nth(0).unwrap().into(),
             };
 
-            let tunnel = {
-                let local_addr = local_addr.clone();
-                let remote_addr = remote_addr.clone();
-                tls_handshake.and_then(move |socket| {
-                    println!("[{}]: started tunneling to {}", local_addr, remote_addr);
-                    let (remote_read, remote_write) = socket.split();
-
-                    let to_server =
-                        copy(local_read, remote_write).map(|(n, _, writer)| shutdown(writer));
-                    let to_client =
-                        copy(remote_read, local_write).map(|(n, _, writer)| shutdown(writer));
-
-                    to_server.join(to_client)
-                })
-            };
-
-            let msg = {
-                let local_addr = local_addr.clone();
-                tunnel
-                    .map(move |(from_client, from_server)| {
-                             println!("[{}]: client disconnected", local_addr);
-                         })
-                    .map_err(move |e| {
-                                 // Don't panic. Maybe the client just disconnected too soon.
-                                 println!("[{}]: error: {}", local_addr, e);
-                             })
-            };
-
-            handle.spawn(msg);
-
+            tunnel::start_tunnel(&handle, local_sock, remote_sock, sni_addr);
             Ok(())
         });
 
     core.run(server).unwrap();
-}
-
-#[derive(Clone)]
-struct TunnelStream(Arc<TcpStream>);
-
-impl Read for TunnelStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        (&*self.0).read(buf)
-    }
-}
-
-impl Write for TunnelStream {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        (&*self.0).write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-impl AsyncRead for TunnelStream {}
-impl AsyncWrite for TunnelStream {
-    fn shutdown(&mut self) -> Poll<(), io::Error> {
-        try!(self.0.shutdown(Shutdown::Write));
-        Ok(().into())
-    }
 }
