@@ -37,19 +37,18 @@ pub fn start_tunnel(handle: &Handle,
                      local_addr,
                      socket.get_ref().get_ref().peer_addr().unwrap());
             let (remote_read, remote_write) = socket.split();
-            let to_server = copy(local_read, remote_write).map(|(n, _, writer)| shutdown(writer));
-            let to_client = copy(remote_read, local_write).map(|(n, _, writer)| shutdown(writer));
+            let to_server = copy(local_read, remote_write).map(|(_, _, writer)| shutdown(writer));
+            let to_client = copy(remote_read, local_write).map(|(_, _, writer)| shutdown(writer));
             to_server.join(to_client)
         })
     };
     let msg = {
         let local_addr = local_addr.clone();
         tunnel
-            .map(move |(from_client, from_server)| {
+            .map(move |_| {
                      println!("[{}]: client disconnected", local_addr);
                  })
             .map_err(move |e| {
-                         // Don't panic. Maybe the client just disconnected too soon.
                          println!("[{}]: error: {}", local_addr, e);
                      })
     };

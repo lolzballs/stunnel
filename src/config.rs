@@ -1,5 +1,3 @@
-use errors::*;
-
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -14,11 +12,11 @@ pub struct Config {
 
 impl Config {
     pub fn from_file<P: AsRef<Path>>(name: P) -> ::Result<Self> {
-        let file = try!(File::open(name).map(|mut f| {
-                                                 let mut s = String::new();
-                                                 f.read_to_string(&mut s);
-                                                 s
-                                             }));
-        Ok(try!(toml::from_str(&file)))
+        let string = File::open(name)
+            .and_then(|mut file| {
+                          let mut s = String::new();
+                          file.read_to_string(&mut s).map(|_| s)
+                      })?;
+        Ok(toml::from_str(&string)?)
     }
 }

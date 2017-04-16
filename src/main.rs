@@ -18,17 +18,11 @@ mod tunnel;
 use config::Config;
 use errors::*;
 
-use std::io::{self, Read, Write};
-use std::net::{Shutdown, ToSocketAddrs};
-use std::sync::Arc;
+use std::net::ToSocketAddrs;
 
-use futures::{Future, Stream, Poll};
-use native_tls::TlsConnector;
+use futures::Stream;
 use tokio_core::net::{TcpListener, TcpStream};
 use tokio_core::reactor::Core;
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::io::{copy, shutdown};
-use tokio_tls::TlsConnectorExt;
 
 fn main() {
     let config = Config::from_file("stunnel.toml").unwrap();
