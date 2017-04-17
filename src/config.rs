@@ -1,10 +1,17 @@
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+
 use toml;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
+    pub tunnels: BTreeMap<String, Tunnel>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Tunnel {
     pub listen: String,
     pub remote: String,
     pub sni_addr: Option<String>,
