@@ -11,6 +11,7 @@ use tokio_io::io::{copy, shutdown};
 use tokio_tls::TlsConnectorExt;
 
 pub fn start_tunnel(handle: &Handle,
+                    tunnel_name: String,
                     local_sock: TcpStream,
                     remote_sock: TcpStreamNew,
                     sni_addr: String) {
@@ -20,9 +21,11 @@ pub fn start_tunnel(handle: &Handle,
 
     let cx = TlsConnector::builder().unwrap().build().unwrap();
     let tls_handshake = {
+        let tunnel_name = tunnel_name.clone();
         let local_addr = local_addr.clone();
         remote_sock.and_then(move |socket| {
-            println!("[{}]: starting TLS connection to {}, with SNI address {}",
+            println!("[{} {}]: starting TLS connection to {}, with SNI address {}",
+                     tunnel_name,
                      local_addr,
                      socket.peer_addr().unwrap(),
                      sni_addr);
@@ -31,9 +34,11 @@ pub fn start_tunnel(handle: &Handle,
         })
     };
     let tunnel = {
+        let tunnel_name = tunnel_name.clone();
         let local_addr = local_addr.clone();
         tls_handshake.and_then(move |socket| {
-            println!("[{}]: started tunneling to {}",
+            println!("[{} {}]: started tunneling to {}",
+                     tunnel_name,
                      local_addr,
                      socket.get_ref().get_ref().peer_addr().unwrap());
             let (remote_read, remote_write) = socket.split();
@@ -43,13 +48,14 @@ pub fn start_tunnel(handle: &Handle,
         })
     };
     let msg = {
+        let tunnel_name2 = tunnel_name.clone();
         let local_addr = local_addr.clone();
         tunnel
             .map(move |_| {
-                     println!("[{}]: client disconnected", local_addr);
+                     println!("[{} {}]: client disconnected", tunnel_name, local_addr);
                  })
             .map_err(move |e| {
-                         println!("[{}]: error: {}", local_addr, e);
+                         println!("[{} {}]: error: {}", tunnel_name2, local_addr, e);
                      })
     };
 

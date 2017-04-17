@@ -2,11 +2,10 @@ use config::Config;
 use tunnel;
 
 use std::collections::HashMap;
-use std::ops::FnOnce;
 use std::net::{SocketAddr, ToSocketAddrs};
 
-use futures::{Async, Future, Poll, Stream};
-use futures::stream::{Fuse, Map};
+use futures::{Async, Poll, Stream};
+use futures::stream::Fuse;
 use tokio_core::net::{Incoming, TcpListener, TcpStream};
 use tokio_core::reactor::{Core, Handle};
 
@@ -68,8 +67,7 @@ impl Server {
 
         let all_incoming =
             select_all(all).for_each(|(sock, addr, tunnel)| {
-                                         let local_addr = sock.local_addr().unwrap();
-                                         Self::handle_client(&handle, &tunnel, sock, local_addr);
+                                         Self::handle_client(&handle, tunnel, sock, addr);
                                          Ok(())
                                      });
         core.run(all_incoming).unwrap();
@@ -81,13 +79,17 @@ impl Server {
     }
 
     fn handle_client(handle: &Handle,
-                     tunnel: &Tunnel,
+                     tunnel: Tunnel,
                      local_sock: TcpStream,
                      local_addr: SocketAddr) {
         println!("[{}]: recieved connection from {}", tunnel.name, local_addr);
         let remote_sock = TcpStream::connect(&tunnel.remote, &handle);
 
-        tunnel::start_tunnel(&handle, local_sock, remote_sock, tunnel.sni_addr.clone());
+        tunnel::start_tunnel(&handle,
+                             tunnel.name,
+                             local_sock,
+                             remote_sock,
+                             tunnel.sni_addr.clone());
     }
 }
 
@@ -127,7 +129,7 @@ impl<S: Stream> Stream for Select<S> {
         }
 
         let stream_count = self.streams.len();
-        if self.current > stream_count {
+        if self.current >= stream_count {
             self.current %= stream_count;
         }
 

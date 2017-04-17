@@ -20,12 +20,6 @@ use config::Config;
 use errors::*;
 use server::Server;
 
-use std::net::ToSocketAddrs;
-
-use futures::Stream;
-use tokio_core::net::{TcpListener, TcpStream};
-use tokio_core::reactor::Core;
-
 fn main() {
     let config = Config::from_file("stunnel.toml").unwrap();
     println!("{:#?}", config);
