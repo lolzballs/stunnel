@@ -1,0 +1,8 @@
+[tunnels.vpn]
+listen = "0.0.0.0:1194"
+remote = "top.kek:443"
+sni_addr = "some.top.kek"
+
+[tunnels.something_else]
+listen = "0.0.0.0:8080"
+remote = "top.kek:443"
