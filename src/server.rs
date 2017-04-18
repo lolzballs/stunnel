@@ -58,11 +58,19 @@ impl Server {
         let mut all = Vec::new();
         for (local_addr, tunnel) in self.tunnels.iter() {
             let tunnel = tunnel.clone();
-            let listen =
-                Self::listen(&handle, local_addr.clone()).map(move |(sock, addr)| {
-                                                                  (sock, addr, tunnel.clone())
-                                                              });
-            all.push(listen.fuse());
+            println!("[{}]: listening on {}", tunnel.name, local_addr);
+            match Self::listen(&handle, local_addr.clone()) {
+                Ok(listener) => {
+                    all.push(listener
+                                 .map(move |(sock, addr)| (sock, addr, tunnel.clone()))
+                                 .fuse());
+                }
+                Err(e) => println!("[{}]: {}", tunnel.name, e),
+            }
+        }
+
+        if all.len() == 0 {
+            panic!("no servers to run!");
         }
 
         let all_incoming =
@@ -73,9 +81,9 @@ impl Server {
         core.run(all_incoming).unwrap();
     }
 
-    fn listen(handle: &Handle, local_addr: SocketAddr) -> Incoming {
-        let listener = TcpListener::bind(&local_addr, &handle).unwrap();
-        listener.incoming()
+    fn listen(handle: &Handle, local_addr: SocketAddr) -> ::Result<Incoming> {
+        let listener = TcpListener::bind(&local_addr, &handle)?;
+        Ok(listener.incoming())
     }
 
     fn handle_client(handle: &Handle,
