@@ -3,6 +3,7 @@ use tunnel;
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::rc::Rc;
 
 use futures::{Async, Poll, Stream};
 use futures::stream::Fuse;
@@ -10,14 +11,15 @@ use tokio_core::net::{Incoming, TcpListener, TcpStream};
 use tokio_core::reactor::{Core, Handle};
 
 #[derive(Clone, Debug)]
-struct Tunnel {
-    name: String,
-    remote: SocketAddr,
-    sni_addr: String,
+pub struct Tunnel {
+    pub name: String,
+    pub local: SocketAddr,
+    pub remote: SocketAddr,
+    pub sni_addr: String,
 }
 
 pub struct Server {
-    tunnels: HashMap<SocketAddr, Tunnel>,
+    tunnels: HashMap<SocketAddr, Rc<Tunnel>>,
 }
 
 impl Server {
@@ -41,11 +43,12 @@ impl Server {
                 None => tunnel.remote.split(':').nth(0).unwrap().into(),
             };
             tunnels.insert(local,
-                           Tunnel {
-                               name: name,
-                               remote: remote,
-                               sni_addr: sni_addr,
-                           });
+                           Rc::new(Tunnel {
+                                       name: name,
+                                       local: local,
+                                       remote: remote,
+                                       sni_addr: sni_addr,
+                                   }));
         }
 
         Server { tunnels: tunnels }
@@ -87,17 +90,13 @@ impl Server {
     }
 
     fn handle_client(handle: &Handle,
-                     tunnel: Tunnel,
+                     tunnel: Rc<Tunnel>,
                      local_sock: TcpStream,
                      local_addr: SocketAddr) {
         println!("[{}]: recieved connection from {}", tunnel.name, local_addr);
         let remote_sock = TcpStream::connect(&tunnel.remote, &handle);
 
-        tunnel::start_tunnel(&handle,
-                             tunnel.name,
-                             local_sock,
-                             remote_sock,
-                             tunnel.sni_addr.clone());
+        tunnel::start_tunnel(&handle, tunnel, local_sock, remote_sock);
     }
 }
 

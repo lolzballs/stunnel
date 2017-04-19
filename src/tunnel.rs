@@ -1,5 +1,8 @@
+use server::Tunnel;
+
 use std::io::{self, Read, Write};
 use std::net::Shutdown;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use futures::{Future, Poll};
@@ -11,36 +14,35 @@ use tokio_io::io::{copy, shutdown};
 use tokio_tls::TlsConnectorExt;
 
 pub fn start_tunnel(handle: &Handle,
-                    tunnel_name: String,
+                    tunnel: Rc<Tunnel>,
                     local_sock: TcpStream,
-                    remote_sock: TcpStreamNew,
-                    sni_addr: String) {
+                    remote_sock: TcpStreamNew) {
     let local_addr = local_sock.peer_addr().unwrap();
     let local_read = TunnelStream(Arc::new(local_sock));
     let local_write = local_read.clone();
 
     let cx = TlsConnector::builder().unwrap().build().unwrap();
     let tls_handshake = {
-        let tunnel_name = tunnel_name.clone();
+        let tunnel = tunnel.clone();
         let local_addr = local_addr.clone();
         remote_sock.and_then(move |socket| {
             println!("[{} {}]: starting TLS connection to {}, with SNI address {}",
-                     tunnel_name,
+                     tunnel.name,
                      local_addr,
-                     socket.peer_addr().unwrap(),
-                     sni_addr);
-            cx.connect_async(&sni_addr, socket)
+                     tunnel.remote,
+                     tunnel.sni_addr);
+            cx.connect_async(&tunnel.sni_addr, socket)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
         })
     };
-    let tunnel = {
-        let tunnel_name = tunnel_name.clone();
+    let tunnel_future = {
+        let tunnel = tunnel.clone();
         let local_addr = local_addr.clone();
         tls_handshake.and_then(move |socket| {
             println!("[{} {}]: started tunneling to {}",
-                     tunnel_name,
+                     tunnel.name,
                      local_addr,
-                     socket.get_ref().get_ref().peer_addr().unwrap());
+                     tunnel.remote);
             let (remote_read, remote_write) = socket.split();
             let to_server = copy(local_read, remote_write).map(|(_, _, writer)| shutdown(writer));
             let to_client = copy(remote_read, local_write).map(|(_, _, writer)| shutdown(writer));
@@ -48,14 +50,13 @@ pub fn start_tunnel(handle: &Handle,
         })
     };
     let msg = {
-        let tunnel_name2 = tunnel_name.clone();
-        let local_addr = local_addr.clone();
-        tunnel
+        let tunnel2 = tunnel.clone();
+        tunnel_future
             .map(move |_| {
-                     println!("[{} {}]: client disconnected", tunnel_name, local_addr);
+                     println!("[{} {}]: client disconnected", tunnel.name, local_addr);
                  })
             .map_err(move |e| {
-                         println!("[{} {}]: error: {}", tunnel_name2, local_addr, e);
+                         println!("[{} {}]: error: {}", tunnel2.name, local_addr, e);
                      })
     };
 
