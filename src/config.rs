@@ -15,6 +15,7 @@ pub struct Tunnel {
     pub listen: String,
     pub remote: String,
     pub sni_addr: Option<String>,
+    pub ssl_cert: Option<String>,
 }
 
 impl Config {

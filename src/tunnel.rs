@@ -21,7 +21,7 @@ pub fn start_tunnel(handle: &Handle,
     let local_read = TunnelStream(Arc::new(local_sock));
     let local_write = local_read.clone();
 
-    let cx = TlsConnector::builder().unwrap().build().unwrap();
+    let cx = tunnel.connector.clone();
     let tls_handshake = {
         let tunnel = tunnel.clone();
         let local_addr = local_addr.clone();

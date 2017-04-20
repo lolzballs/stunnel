@@ -2,20 +2,23 @@ use config::Config;
 use tunnel;
 
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::rc::Rc;
 
 use futures::{Async, Poll, Stream};
 use futures::stream::Fuse;
+use native_tls::{Certificate, TlsConnector};
 use tokio_core::net::{Incoming, TcpListener, TcpStream};
 use tokio_core::reactor::{Core, Handle};
 
-#[derive(Clone, Debug)]
 pub struct Tunnel {
     pub name: String,
     pub local: SocketAddr,
     pub remote: SocketAddr,
     pub sni_addr: String,
+    pub connector: Rc<TlsConnector>,
 }
 
 pub struct Server {
@@ -42,12 +45,47 @@ impl Server {
                 Some(ref s) => s.clone(),
                 None => tunnel.remote.split(':').nth(0).unwrap().into(),
             };
+            let ssl_cert = match tunnel.ssl_cert {
+                Some(ref s) => {
+                    let cert = File::open(s).and_then(|mut file| {
+                                                          let mut cert = Vec::new();
+                                                          file.read_to_end(&mut cert).map(|_| cert)
+                                                      });
+                    match cert {
+                        Ok(ref cert) => {
+                            match Certificate::from_der(cert) {
+                                Ok(cert) => Some(cert),
+                                Err(e) => {
+                                    println!("[{}]: error loading ssl cert: {}, continuing...",
+                                             name,
+                                             e);
+                                    None
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("[{}]: error loading ssl cert: {}, continuing...", name, e);
+                            None
+                        }
+                    }
+                }
+                None => None,
+            };
+
+            let connector = {
+                let mut builder = TlsConnector::builder().unwrap();
+                if let Some(cert) = ssl_cert {
+                    builder.add_root_certificate(cert).unwrap();
+                }
+                builder.build().unwrap()
+            };
             tunnels.insert(local,
                            Rc::new(Tunnel {
                                        name: name,
                                        local: local,
                                        remote: remote,
                                        sni_addr: sni_addr,
+                                       connector: Rc::new(connector),
                                    }));
         }
 
