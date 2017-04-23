@@ -16,13 +16,17 @@ mod errors;
 mod server;
 mod tunnel;
 
+use std::env;
+
 use config::Config;
 use errors::*;
 use server::Server;
 
 fn main() {
-    let config = Config::from_file("stunnel.toml").unwrap();
-    println!("{:#?}", config);
-
+    let config_path = match env::args().nth(1) {
+        Some(s) => s,
+        None => "stunnel.toml".to_owned(),
+    };
+    let config = Config::from_file(config_path).unwrap();
     Server::from_config(config).start();
 }
